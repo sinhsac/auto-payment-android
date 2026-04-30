@@ -47,7 +47,7 @@ class NotifyListenerService : NotificationListenerService() {
             .build()
 
         WorkManager.getInstance(applicationContext)
-            .enqueueUniqueWork("noti-sync", ExistingWorkPolicy.KEEP, request)
+            .enqueueUniqueWork("noti-sync", ExistingWorkPolicy.APPEND_OR_REPLACE, request)
     }
 
     override fun onStartCommand(intent: android.content.Intent?, flags: Int, startId: Int): Int {

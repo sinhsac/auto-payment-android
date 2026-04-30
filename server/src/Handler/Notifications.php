@@ -22,7 +22,7 @@ class Notifications
             'title'       => $body['title'] ?? null,
             'msg'         => $body['msg'] ?? null,
             'groupKey'    => $body['groupKey'] ?? null,
-            'postTime'    => $body['strPostTime'] ?? null,
+            'postTime'    => $body['postTime'] ?? null,
             'receivedAt'  => new UTCDateTime(),
         ]);
 

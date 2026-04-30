@@ -58,6 +58,8 @@ class PushingWorker(ctx: Context, params: WorkerParameters) : Worker(ctx, params
         val conn = URL(urlStr).openConnection() as HttpsURLConnection
         conn.requestMethod = "POST"
         conn.setRequestProperty("Content-Type", "application/json; charset=utf-8")
+        conn.connectTimeout = 10000
+        conn.readTimeout = 10000
         conn.doOutput = true
 
         when (authType) {
