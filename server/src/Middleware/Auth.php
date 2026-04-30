@@ -6,17 +6,15 @@ class Auth
 {
     public static function check(array $config): void
     {
-        // X-API-Secret: app cũ
-        $apiSecret   = $_SERVER['HTTP_X_API_SECRET'] ?? '';
-        // X-Auth-Secret: NotiRelay secret mode
-        $authSecret  = $_SERVER['HTTP_X_AUTH_SECRET'] ?? '';
-        // X-Auth-Token: NotiRelay JWT mode
-        $authToken   = $_SERVER['HTTP_X_AUTH_TOKEN'] ?? '';
-        // Authorization: Basic
-        $basicAuth   = $_SERVER['HTTP_AUTHORIZATION'] ?? '';
+        $apiSecret  = $_SERVER['HTTP_X_API_SECRET'] ?? '';
+        $authSecret = $_SERVER['HTTP_X_AUTH_SECRET'] ?? '';
+        $authToken  = $_SERVER['HTTP_X_AUTH_TOKEN'] ?? '';
+        $basicAuth  = $_SERVER['HTTP_AUTHORIZATION'] ?? '';
 
         $notiSecret = getenv('NOTI_SECRET') ?: ($config['noti_secret'] ?? '');
         $notiToken  = getenv('NOTI_TOKEN')  ?: ($config['noti_token']  ?? '');
+
+        error_log('AUTH DEBUG - received authSecret: [' . $authSecret . '] expected: [' . $notiSecret . ']');
 
         $authorized =
             ($apiSecret  !== '' && $apiSecret  === $config['secret']) ||

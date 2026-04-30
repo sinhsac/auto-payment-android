@@ -1,7 +1,7 @@
 package com.hotroso.autopay.common
 
 object Constants {
-    val UNSUPPORTED_APPS: List<String> = listOf("android")
+    val UNSUPPORTED_APPS: List<String> = listOf("android", "com.android.systemui", "com.android.shell")
 
     const val MY_ACTION_ON_REBOOT = "hotroso-auto-payment"
     const val NOTIFICATION_CHANNEL_ID = "autopay_channel"
