@@ -1,0 +1,13 @@
+{
+    "name": "packing-station/api-server",
+    "require": {
+        "php": ">=8.3",
+        "mongodb/mongodb": "^1.15",
+        "phpoffice/phpspreadsheet": "^3.3"
+    },
+    "autoload": {
+        "psr-4": {
+            "App\\": "src/"
+        }
+    }
+}

@@ -8,7 +8,14 @@ object Constants {
     const val NOTIFICATION_CHANNEL_NAME = "Auto Pay Service"
     const val PREF_NAME = "autopay_prefs"
     const val PREF_SERVER_URL = "server_url"
-    const val DEFAULT_SERVER_URL = "https://your-server.com/notify"
+    const val PREF_AUTH_TYPE = "auth_type"
+    const val PREF_AUTH_USER = "auth_user"
+    const val PREF_AUTH_PASS = "auth_pass"
+    const val PREF_AUTH_SECRET = "auth_secret"
+    const val PREF_AUTH_TOKEN = "auth_token"
+    const val DEFAULT_SERVER_URL = "https://4fc0e50dd3.hotrogiaiphapso.info/api/notifications"
+    const val DEFAULT_AUTH_TYPE = "secret"
+    const val DEFAULT_AUTH_SECRET = "nr_9x2Kp7mQvLzT4wYjR8sNdHbEuFcAi"
 
     // AutoStart brands
     const val BRAND_XIAOMI = "xiaomi"

@@ -14,12 +14,21 @@ import com.hotroso.autopay.common.Constants
 
 class KeepAliveService : Service() {
 
+    companion object {
+        const val ACTION_STOP = "com.hotroso.autopay.STOP_SERVICE"
+    }
+
     override fun onCreate() {
         super.onCreate()
         startForeground(1, createNotification())
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == ACTION_STOP) {
+            stopForeground(true)
+            stopSelf()
+            return START_NOT_STICKY
+        }
         return START_STICKY
     }
 

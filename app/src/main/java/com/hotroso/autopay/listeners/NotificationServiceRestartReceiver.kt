@@ -16,6 +16,6 @@ class NotificationServiceRestartReceiver: BroadcastReceiver() {
 
     private fun restartService(context: Context) {
         val serviceIntent = Intent(context, KeepAliveService::class.java)
-        context.startService(serviceIntent)
+        context.startForegroundService(serviceIntent)
     }
 }
