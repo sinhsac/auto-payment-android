@@ -5,7 +5,9 @@ import android.content.Context
 import android.content.Intent
 import android.content.Intent.FLAG_ACTIVITY_NEW_TASK
 import android.content.pm.ApplicationInfo
+import android.net.Uri
 import android.os.Build
+import android.provider.Settings
 import android.widget.Toast
 import com.hotroso.autopay.common.Constants
 import java.util.Locale
@@ -29,11 +31,33 @@ class AutoStartHelper private constructor() {
     }
 
     private fun autoStartSamsung(context: Context) {
+        // Mở thẳng màn hình Unrestricted cho app này
+        try {
+            val intent = Intent().apply {
+                component = ComponentName(
+                    "com.samsung.android.lool",
+                    "com.samsung.android.sm.battery.ui.setting.AppRestrictionActivity"
+                )
+                putExtra("packageName", context.packageName)
+                addFlags(FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(intent)
+            return
+        } catch (_: Exception) {}
+
+        // Fallback: màn hình Battery chung
         val pkg = if (Build.VERSION.SDK_INT > Build.VERSION_CODES.N) Constants.PACKAGE_SAMSUNG_MAIN1 else Constants.PACKAGE_SAMSUNG_MAIN2
         if (isPackageExists(context, pkg)) {
             try { startIntent(context, pkg, Constants.PACKAGE_SAMSUNG_COMPONENT1) }
             catch (e: Exception) {
-                try { startIntent(context, pkg, Constants.PACKAGE_SAMSUNG_COMPONENT2) } catch (e1: Exception) { e1.printStackTrace() }
+                try { startIntent(context, pkg, Constants.PACKAGE_SAMSUNG_COMPONENT2) } catch (_: Exception) {
+                    try {
+                        context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                            data = Uri.parse("package:${context.packageName}")
+                            addFlags(FLAG_ACTIVITY_NEW_TASK)
+                        })
+                    } catch (_: Exception) {}
+                }
             }
         }
     }

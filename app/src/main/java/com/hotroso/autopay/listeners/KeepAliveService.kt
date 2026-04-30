@@ -18,6 +18,8 @@ class KeepAliveService : Service() {
         const val ACTION_STOP = "com.hotroso.autopay.STOP_SERVICE"
     }
 
+    private var intentionalStop = false
+
     override fun onCreate() {
         super.onCreate()
         startForeground(1, createNotification())
@@ -25,6 +27,7 @@ class KeepAliveService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) {
+            intentionalStop = true
             stopForeground(true)
             stopSelf()
             return START_NOT_STICKY
@@ -36,12 +39,12 @@ class KeepAliveService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
-        sendRestartBroadcast()
+        if (!intentionalStop) sendRestartBroadcast()
     }
 
     override fun onTaskRemoved(rootIntent: Intent) {
         super.onTaskRemoved(rootIntent)
-        sendRestartBroadcast()
+        if (!intentionalStop) sendRestartBroadcast()
     }
 
     private fun sendRestartBroadcast() {
