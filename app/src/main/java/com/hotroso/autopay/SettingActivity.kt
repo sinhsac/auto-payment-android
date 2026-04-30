@@ -47,6 +47,7 @@ class SettingActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        notificationListenerUtil.rebindIfNeeded()
         updateStatusUI()
     }
 

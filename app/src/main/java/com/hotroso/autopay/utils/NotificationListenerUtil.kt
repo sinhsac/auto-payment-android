@@ -23,17 +23,16 @@ class NotificationListenerUtil(private val activity: Activity) {
     }
 
     fun requestNotificationListenerPermission(launcher: ActivityResultLauncher<Intent>) {
-        toggleNotificationListenerService(true)
         launcher.launch(getNotificationListenerSettingsIntent())
     }
 
-    private fun toggleNotificationListenerService(enable: Boolean) {
-        val packageManager = activity.packageManager
-        packageManager.setComponentEnabledSetting(
-            ComponentName(activity, NotifyListenerService::class.java),
-            if (enable) PackageManager.COMPONENT_ENABLED_STATE_ENABLED else PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
-            PackageManager.DONT_KILL_APP
-        )
+    // Force Android rebind service sau khi cấp quyền
+    fun rebindIfNeeded() {
+        if (!isNotificationServiceEnabled()) return
+        val pm = activity.packageManager
+        val component = ComponentName(activity, NotifyListenerService::class.java)
+        pm.setComponentEnabledSetting(component, PackageManager.COMPONENT_ENABLED_STATE_DISABLED, PackageManager.DONT_KILL_APP)
+        pm.setComponentEnabledSetting(component, PackageManager.COMPONENT_ENABLED_STATE_ENABLED, PackageManager.DONT_KILL_APP)
     }
 
     private fun getNotificationListenerSettingsIntent(): Intent? {
