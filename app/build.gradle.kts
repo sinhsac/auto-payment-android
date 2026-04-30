@@ -8,7 +8,7 @@ android {
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.hotroso.notirelay"
+        applicationId = "com.hotroso.autopay"
         minSdk = 24
         targetSdk = 34
         versionCode = 1
