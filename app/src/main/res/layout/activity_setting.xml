@@ -1,55 +1,219 @@
 <?xml version="1.0" encoding="utf-8"?>
-<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:background="#F8FAFC"
     tools:context=".SettingActivity">
 
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:orientation="vertical">
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="16dp">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Auto Payment Listener"
+            android:textColor="#0F172A"
+            android:textSize="22sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/tvPermissionStatus"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:layout_marginBottom="16dp"
+            android:text="Checking notification listener status..."
+            android:textColor="#475569"
+            android:textSize="13sp" />
+
+        <!-- Server Configuration Section -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Server Webhook Configuration"
+            android:textColor="#0F172A"
+            android:textSize="16sp"
+            android:textStyle="bold" />
+
+        <androidx.appcompat.widget.SwitchCompat
+            android:id="@+id/swListeningEnabled"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="Enable automatic notification forwarding" />
+
+        <androidx.appcompat.widget.SwitchCompat
+            android:id="@+id/swOnlyKnownBanks"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="Only listen to known Vietnamese banking apps" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:text="Webhook Endpoint URL (POST /api/webhooks/bank-notify)"
+            android:textColor="#334155"
+            android:textSize="12sp" />
+
+        <EditText
+            android:id="@+id/etWebhookUrl"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="https://your-domain.com/api/webhooks/bank-notify"
+            android:inputType="textUri"
+            android:singleLine="true" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="Webhook Secret (X-Webhook-Secret, optional)"
+            android:textColor="#334155"
+            android:textSize="12sp" />
+
+        <EditText
+            android:id="@+id/etWebhookSecret"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Matches NUXT_WEBHOOK_SECRET on server"
+            android:inputType="textPassword"
+            android:singleLine="true" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="Order Code Prefix (e.g. AP matches AP123456)"
+            android:textColor="#334155"
+            android:textSize="12sp" />
+
+        <EditText
+            android:id="@+id/etOrderPrefix"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="AP"
+            android:inputType="textCapCharacters"
+            android:singleLine="true" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/btnSaveConfig"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="6dp"
+                android:layout_weight="1"
+                android:onClick="saveConfiguration"
+                android:text="Save Settings" />
+
+            <Button
+                android:id="@+id/btnTestWebhook"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="6dp"
+                android:layout_weight="1"
+                android:onClick="sendTestWebhook"
+                android:text="Test Webhook" />
+        </LinearLayout>
+
+        <!-- Device Permissions Section -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:layout_marginBottom="6dp"
+            android:text="Device Permissions &amp; Background Keep-Alive"
+            android:textColor="#0F172A"
+            android:textSize="16sp"
+            android:textStyle="bold" />
 
         <Button
             android:id="@+id/button1"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:onClick="settingPermission"
-            android:text="@string/btn_setting_permission"
-            tools:layout_editor_absoluteX="177dp"
-            tools:layout_editor_absoluteY="356dp" />
+            android:text="@string/btn_setting_permission" />
 
         <Button
             android:id="@+id/button2"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginBottom="2dp"
+            android:layout_marginTop="4dp"
             android:onClick="permissionBattery"
-            android:text="@string/btn_setting_battery"
-            tools:layout_editor_absoluteX="377dp"
-            tools:layout_editor_absoluteY="356dp" />
+            android:text="@string/btn_setting_battery" />
 
         <Button
             android:id="@+id/button3"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginBottom="2dp"
+            android:layout_marginTop="4dp"
             android:onClick="checkAutoStartPermission"
-            android:text="@string/btn_setting_autorestart"
-            tools:layout_editor_absoluteX="377dp"
-            tools:layout_editor_absoluteY="356dp" />
+            android:text="@string/btn_setting_autorestart" />
 
         <Button
             android:id="@+id/button4"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginBottom="2dp"
+            android:layout_marginTop="4dp"
             android:onClick="notifyOnLockScreenPermission"
-            android:text="@string/btn_notify_on_lock_screen"
-            tools:layout_editor_absoluteX="377dp"
-            tools:layout_editor_absoluteY="356dp" />
+            android:text="@string/btn_notify_on_lock_screen" />
+
+        <!-- Activity Logs Section -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Recent Matched Payments"
+                android:textColor="#0F172A"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+
+            <Button
+                android:id="@+id/btnRefreshLogs"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:onClick="refreshLogs"
+                android:text="Refresh" />
+
+            <Button
+                android:id="@+id/btnClearLogs"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="6dp"
+                android:onClick="clearLogs"
+                android:text="Clear" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/tvActivityLogs"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:background="#0F172A"
+            android:fontFamily="monospace"
+            android:minHeight="120dp"
+            android:padding="12dp"
+            android:text="No matched payment notifications yet."
+            android:textColor="#E2E8F0"
+            android:textSize="12sp" />
 
     </LinearLayout>
 
-</androidx.constraintlayout.widget.ConstraintLayout>
+</ScrollView>

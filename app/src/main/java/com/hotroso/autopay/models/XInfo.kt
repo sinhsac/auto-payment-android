@@ -6,24 +6,17 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-class XInfo(sbn: StatusBarNotification) {
-
-    private var groupKey: String?
-    private var postTime: Date? = null;
-    private var strPostTime: String? = null;
-    private var title: String? = null;
-    private var msg: String? = null;
-    private var pck: String? = null;
-
-    fun getTitle(): String? {
-        return title
-    }
-
-    fun getPck(): String? {
-        return pck
-    }
-
-    init {
+class XInfo(
+    var groupKey: String? = null,
+    var postTime: Date? = null,
+    var strPostTime: String? = null,
+    var title: String? = null,
+    var msg: String? = null,
+    var pck: String? = null,
+    var orderCode: String? = null,
+    var amount: Long? = null
+) {
+    constructor(sbn: StatusBarNotification, extractedOrderCode: String? = null, extractedAmount: Long? = null) : this() {
         val df = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.ENGLISH)
         postTime = Date(sbn.postTime)
         strPostTime = postTime?.let { df.format(it) }
@@ -31,8 +24,7 @@ class XInfo(sbn: StatusBarNotification) {
         msg = NotificationUtils.getMessage(sbn)
         groupKey = sbn.groupKey
         pck = sbn.packageName
-
+        orderCode = extractedOrderCode
+        amount = extractedAmount
     }
-
-
 }
