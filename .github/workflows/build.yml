@@ -7,6 +7,11 @@ on:
   pull_request:
     branches: [ main ]
   workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Optional release tag (e.g. v1.0.0) to publish a Release with QR code'
+        required: false
+        default: ''
 
 permissions:
   contents: write
@@ -19,6 +24,30 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Determine release tag
+        id: meta
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ inputs.tag }}" ]; then
+            TAG="${{ inputs.tag }}"
+            IS_RELEASE="true"
+          elif [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            TAG="${{ github.ref_name }}"
+            IS_RELEASE="true"
+          else
+            TAG="debug"
+            IS_RELEASE="false"
+          fi
+          APK_NAME="AutoPayment-${TAG}.apk"
+          QR_NAME="AutoPayment-${TAG}-qr.png"
+          APK_URL="https://github.com/${{ github.repository }}/releases/download/${TAG}/${APK_NAME}"
+          QR_URL="https://github.com/${{ github.repository }}/releases/download/${TAG}/${QR_NAME}"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "is_release=${IS_RELEASE}" >> "$GITHUB_OUTPUT"
+          echo "apk_name=${APK_NAME}" >> "$GITHUB_OUTPUT"
+          echo "qr_name=${QR_NAME}" >> "$GITHUB_OUTPUT"
+          echo "apk_url=${APK_URL}" >> "$GITHUB_OUTPUT"
+          echo "qr_url=${QR_URL}" >> "$GITHUB_OUTPUT"
 
       - name: Setup JDK 17
         uses: actions/setup-java@v4
@@ -36,11 +65,18 @@ jobs:
       - name: Build Debug APK
         run: ./gradlew assembleDebug --no-daemon
 
-      - name: Prepare APK artifact
+      - name: Prepare APK, QR code & SHA256 checksums
         run: |
           mkdir -p dist
-          cp app/build/outputs/apk/debug/app-debug.apk dist/AutoPayment-debug.apk
-          sha256sum dist/AutoPayment-debug.apk > dist/SHA256SUMS.txt
+          cp app/build/outputs/apk/debug/app-debug.apk "dist/${{ steps.meta.outputs.apk_name }}"
+
+          if [ "${{ steps.meta.outputs.is_release }}" = "true" ]; then
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq qrencode
+            qrencode -s 10 -m 2 -l M -o "dist/${{ steps.meta.outputs.qr_name }}" "${{ steps.meta.outputs.apk_url }}"
+          fi
+
+          (cd dist && sha256sum AutoPayment-* > SHA256SUMS.txt)
           ls -lh dist/
 
       - name: Upload APK artifact
@@ -50,10 +86,29 @@ jobs:
           path: dist/*
           retention-days: 30
 
-      - name: Publish GitHub Release on tag
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Publish GitHub Release with QR code
+        if: steps.meta.outputs.is_release == 'true'
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.meta.outputs.tag }}
+          name: "Auto Payment Android ${{ steps.meta.outputs.tag }}"
           generate_release_notes: true
+          body: |
+            ## Scan QR Code to Download APK on Android
+
+            <p>
+              <a href="${{ steps.meta.outputs.apk_url }}">
+                <img src="${{ steps.meta.outputs.qr_url }}" width="220" alt="Scan QR to download ${{ steps.meta.outputs.apk_name }}" />
+              </a>
+            </p>
+
+            - **Direct APK Download:** [`${{ steps.meta.outputs.apk_name }}`](${{ steps.meta.outputs.apk_url }})
+            - **QR Code Image:** `${{ steps.meta.outputs.qr_name }}`
+            - **Integrity Checksums:** `SHA256SUMS.txt`
+
+            ### Quick Setup After Installing
+            1. Open **Auto Payment Listener**, enter your `auto-payment` server Webhook URL (`https://your-domain/api/webhooks/bank-notify`) and optional `X-Webhook-Secret`.
+            2. Tap **Save Settings** → **Test Webhook** to verify connectivity.
+            3. Grant **Notification Access** and **Battery Optimization Exemption** so incoming bank alerts are captured reliably in the background.
           files: |
             dist/*

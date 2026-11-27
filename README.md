@@ -45,7 +45,7 @@ Each matched payment notification is posted as `application/json; charset=utf-8`
 
 ## Download or Build APK
 
-- **Prebuilt APK:** Download `AutoPayment-debug.apk` from **[GitHub Actions → Artifacts](https://github.com/sinhsac/auto-payment-android/actions/workflows/build.yml)** or the **[Releases page](https://github.com/sinhsac/auto-payment-android/releases)**.
+- **Prebuilt APK (with QR Code):** Open the **[Releases page](https://github.com/sinhsac/auto-payment-android/releases)** and scan the embedded **QR code** with your Android phone to download and install directly (or grab the latest build from **[GitHub Actions → Artifacts](https://github.com/sinhsac/auto-payment-android/actions/workflows/build.yml)**).
 - **Build Locally (JDK 17 + Android SDK 34):**
 
 ```bash
