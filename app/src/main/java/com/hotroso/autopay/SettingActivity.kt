@@ -2,29 +2,35 @@ package com.hotroso.autopay
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.PowerManager
 import android.provider.Settings
-import android.view.View
-import android.widget.EditText
-import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.compose.setContent
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
-import androidx.appcompat.widget.SwitchCompat
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.runtime.mutableStateOf
 import androidx.core.app.ActivityCompat
-import com.google.gson.Gson
+import androidx.core.content.ContextCompat
 import com.hotroso.autopay.common.Constants
+import com.hotroso.autopay.data.PaymentDatabaseHelper
+import com.hotroso.autopay.data.PaymentRecord
+import com.hotroso.autopay.data.SyncStatus
 import com.hotroso.autopay.helpers.AutoStartHelper
-import com.hotroso.autopay.models.XInfo
+import com.hotroso.autopay.ui.AppUiState
+import com.hotroso.autopay.ui.AutoPaymentApp
 import com.hotroso.autopay.utils.AutoPayPrefs
 import com.hotroso.autopay.utils.NotificationListenerUtil
 import com.hotroso.autopay.workers.PushingWorker
+import com.hotroso.autopay.workers.SyncPendingWorker
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -33,156 +39,196 @@ class SettingActivity : AppCompatActivity() {
 
     private lateinit var notificationListenerUtil: NotificationListenerUtil
     private lateinit var notiLisPerLauncher: ActivityResultLauncher<Intent>
+    private lateinit var db: PaymentDatabaseHelper
+
+    private val uiState = mutableStateOf(AppUiState())
+    private val snackbarHostState = SnackbarHostState()
     private val requestCodeNotificationPolicyAccess = 1
 
-    private lateinit var tvPermissionStatus: TextView
-    private lateinit var swListeningEnabled: SwitchCompat
-    private lateinit var swOnlyKnownBanks: SwitchCompat
-    private lateinit var etWebhookUrl: EditText
-    private lateinit var etWebhookSecret: EditText
-    private lateinit var etOrderPrefix: EditText
-    private lateinit var tvActivityLogs: TextView
+    private val paymentsUpdatedReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            reloadDashboard()
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_setting)
 
         notificationListenerUtil = NotificationListenerUtil(this)
-
-        tvPermissionStatus = findViewById(R.id.tvPermissionStatus)
-        swListeningEnabled = findViewById(R.id.swListeningEnabled)
-        swOnlyKnownBanks = findViewById(R.id.swOnlyKnownBanks)
-        etWebhookUrl = findViewById(R.id.etWebhookUrl)
-        etWebhookSecret = findViewById(R.id.etWebhookSecret)
-        etOrderPrefix = findViewById(R.id.etOrderPrefix)
-        tvActivityLogs = findViewById(R.id.tvActivityLogs)
+        db = PaymentDatabaseHelper.getInstance(this)
+        SyncPendingWorker.schedulePeriodicSync(this)
 
         notiLisPerLauncher =
             registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
                 val granted = notificationListenerUtil.isNotificationServiceEnabled()
-                handleNotificationListenerPermissionResult(granted)
+                reloadDashboard()
+                val msg = if (granted) Constants.PERMISSION_GRANTED else Constants.PERMISSION_DENIED
+                Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
             }
 
-        loadSavedSettings()
-        updateStatusAndLogs()
+        reloadDashboard()
+
+        setContent {
+            AutoPaymentApp(
+                state = uiState.value,
+                snackbarHostState = snackbarHostState,
+                onFilterChange = { filter ->
+                    uiState.value = uiState.value.copy(selectedFilter = filter)
+                    reloadDashboard()
+                },
+                onSearchChange = { query ->
+                    uiState.value = uiState.value.copy(searchQuery = query)
+                    reloadDashboard()
+                },
+                onRefresh = {
+                    reloadDashboard()
+                    Toast.makeText(this, "Đã làm mới danh sách đơn", Toast.LENGTH_SHORT).show()
+                },
+                onSyncAllPending = { triggerSyncAll() },
+                onRetrySingle = { record -> retrySingleRecord(record) },
+                onDeleteRecord = { record ->
+                    db.deleteById(record.id)
+                    reloadDashboard()
+                },
+                onSaveConfig = { url, secret, prefix, onlyKnownBanks, listeningEnabled ->
+                    saveConfiguration(url, secret, prefix, onlyKnownBanks, listeningEnabled)
+                },
+                onTestWebhook = { url, secret, prefix ->
+                    sendTestWebhook(url, secret, prefix)
+                },
+                onClearSynced = {
+                    val count = db.deleteSyncedRecords()
+                    reloadDashboard()
+                    Toast.makeText(this, "Đã dọn $count đơn đã đồng bộ", Toast.LENGTH_SHORT).show()
+                },
+                onRequestNotificationPermission = {
+                    notificationListenerUtil.requestNotificationListenerPermission(notiLisPerLauncher)
+                },
+                onRequestBatteryExemption = { requestBatteryOptimizationExemption() },
+                onRequestAutoStart = { AutoStartHelper.instance.getAutoStartPermission(applicationContext) },
+                onRequestLockScreenNotifications = { requestAndroid13NotificationPermission() }
+            )
+        }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        ContextCompat.registerReceiver(
+            this,
+            paymentsUpdatedReceiver,
+            IntentFilter(PaymentDatabaseHelper.ACTION_PAYMENTS_UPDATED),
+            ContextCompat.RECEIVER_NOT_EXPORTED
+        )
+    }
+
+    override fun onStop() {
+        super.onStop()
+        try {
+            unregisterReceiver(paymentsUpdatedReceiver)
+        } catch (_: IllegalArgumentException) {
+            // already unregistered
+        }
     }
 
     override fun onResume() {
         super.onResume()
-        updateStatusAndLogs()
+        reloadDashboard()
     }
 
-    private fun loadSavedSettings() {
-        etWebhookUrl.setText(AutoPayPrefs.getWebhookUrl(this))
-        etWebhookSecret.setText(AutoPayPrefs.getWebhookSecret(this))
-        etOrderPrefix.setText(AutoPayPrefs.getOrderPrefix(this))
-        swOnlyKnownBanks.isChecked = AutoPayPrefs.isOnlyKnownBankApps(this)
-        swListeningEnabled.isChecked = AutoPayPrefs.isListeningEnabled(this)
+    private fun reloadDashboard() {
+        val current = uiState.value
+        val records = db.getAll(current.selectedFilter, current.searchQuery)
+        val stats = db.getStats()
+        val powerManager = applicationContext.getSystemService(Context.POWER_SERVICE) as PowerManager
+        val batteryExempt = powerManager.isIgnoringBatteryOptimizations(packageName)
+
+        uiState.value = current.copy(
+            records = records,
+            stats = stats,
+            isListenerGranted = notificationListenerUtil.isNotificationServiceEnabled(),
+            isBatteryExempt = batteryExempt,
+            webhookUrl = AutoPayPrefs.getWebhookUrl(this),
+            webhookSecret = AutoPayPrefs.getWebhookSecret(this),
+            orderPrefix = AutoPayPrefs.getOrderPrefix(this),
+            onlyKnownBanks = AutoPayPrefs.isOnlyKnownBankApps(this),
+            listeningEnabled = AutoPayPrefs.isListeningEnabled(this)
+        )
     }
 
-    private fun updateStatusAndLogs() {
-        val enabled = notificationListenerUtil.isNotificationServiceEnabled()
-        tvPermissionStatus.text = if (enabled) {
-            "Notification Listener: ACTIVE (ready to detect ${AutoPayPrefs.getOrderPrefix(this)}xxxxxx orders)"
-        } else {
-            "Notification Listener: NOT GRANTED — tap 'Notification Access' below to enable"
-        }
-
-        val logs = AutoPayPrefs.getLogs(this)
-        tvActivityLogs.text = if (logs.isEmpty()) {
-            "No matched payment notifications yet."
-        } else {
-            logs.joinToString("\n")
-        }
-    }
-
-    fun saveConfiguration(view: View?) {
-        val url = etWebhookUrl.text.toString().trim()
-        val secret = etWebhookSecret.text.toString().trim()
-        val prefix = etOrderPrefix.text.toString().trim()
-
-        if (!url.startsWith("http://") && !url.startsWith("https://")) {
-            Toast.makeText(this, "Webhook URL must start with http:// or https://", Toast.LENGTH_LONG).show()
+    private fun saveConfiguration(
+        url: String,
+        secret: String,
+        prefix: String,
+        onlyKnownBanks: Boolean,
+        listeningEnabled: Boolean
+    ) {
+        val trimmedUrl = url.trim()
+        if (!trimmedUrl.startsWith("http://") && !trimmedUrl.startsWith("https://")) {
+            Toast.makeText(this, "Webhook URL phải bắt đầu bằng http:// hoặc https://", Toast.LENGTH_LONG).show()
             return
         }
 
         AutoPayPrefs.saveConfig(
             context = this,
-            webhookUrl = url,
+            webhookUrl = trimmedUrl,
             webhookSecret = secret,
             orderPrefix = prefix,
-            onlyKnownBankApps = swOnlyKnownBanks.isChecked,
-            listeningEnabled = swListeningEnabled.isChecked
+            onlyKnownBankApps = onlyKnownBanks,
+            listeningEnabled = listeningEnabled
         )
-        loadSavedSettings()
-        updateStatusAndLogs()
-        Toast.makeText(this, "Saved Auto Payment settings", Toast.LENGTH_SHORT).show()
+        reloadDashboard()
+        Toast.makeText(this, "Đã lưu cấu hình Auto Payment", Toast.LENGTH_SHORT).show()
     }
 
-    fun sendTestWebhook(view: View?) {
-        saveConfiguration(null)
-        val url = AutoPayPrefs.getWebhookUrl(this)
-        val secret = AutoPayPrefs.getWebhookSecret(this)
-        val prefix = AutoPayPrefs.getOrderPrefix(this)
-        val sampleCode = "${prefix}000000"
-        val nowStr = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.ENGLISH).format(Date())
+    private fun triggerSyncAll() {
+        val pendingCount = db.getPendingOrFailed().size
+        if (pendingCount == 0) {
+            Toast.makeText(this, "Tất cả đơn đều đã đồng bộ!", Toast.LENGTH_SHORT).show()
+            return
+        }
+        SyncPendingWorker.enqueueNow(this)
+        Toast.makeText(this, "Đang đồng bộ $pendingCount đơn chưa gửi...", Toast.LENGTH_SHORT).show()
+    }
 
-        val payload = XInfo(
-            groupKey = "0|com.VCB|test|${System.currentTimeMillis()}",
-            postTime = Date(),
-            strPostTime = nowStr,
-            title = "Vietcombank (Test)",
-            msg = "SD TK 0123456789 +100,000VND luc $nowStr. ND: $sampleCode",
-            pck = "com.VCB",
-            orderCode = sampleCode,
-            amount = 100000L
+    private fun retrySingleRecord(record: PaymentRecord) {
+        db.resetToPending(record.id)
+        PushingWorker.enqueueForPayment(this, record.id, record.orderCode)
+        reloadDashboard()
+        Toast.makeText(this, "Đang gửi lại đơn #${record.orderCode}...", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun sendTestWebhook(url: String, secret: String, prefix: String) {
+        val cleanPrefix = prefix.replace(Regex("[^A-Za-z0-9]"), "").uppercase(Locale.ROOT).ifEmpty { "AP" }
+        val sampleCode = "${cleanPrefix}000000"
+        val nowMs = System.currentTimeMillis()
+        val nowStr = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.ENGLISH).format(Date(nowMs))
+        val msg = "SD TK 0123456789 +100,000VND luc $nowStr. ND: $sampleCode"
+        val fp = PaymentDatabaseHelper.buildFingerprint("com.VCB", nowStr, "test_$nowMs", msg)
+
+        val recordId = db.insertIfNew(
+            PaymentRecord(
+                fingerprint = fp,
+                orderCode = sampleCode,
+                amount = 100000L,
+                bankName = "Vietcombank (Test)",
+                packageName = "com.VCB",
+                title = "Vietcombank (Test)",
+                rawMessage = msg,
+                groupKey = "test_$nowMs",
+                postTimeMs = nowMs,
+                strPostTime = nowStr,
+                syncStatus = SyncStatus.PENDING
+            )
         )
 
-        Toast.makeText(this, "Sending test webhook to server...", Toast.LENGTH_SHORT).show()
-        Thread {
-            try {
-                val (code, body) = PushingWorker.postJson(url, Gson().toJson(payload), secret)
-                val summary = "TEST $sampleCode -> HTTP $code"
-                AutoPayPrefs.appendLog(this, summary)
-                runOnUiThread {
-                    updateStatusAndLogs()
-                    Toast.makeText(this, "$summary: ${body.take(100)}", Toast.LENGTH_LONG).show()
-                }
-            } catch (e: Exception) {
-                val msg = "TEST ERROR -> ${e.message ?: "connection failed"}"
-                AutoPayPrefs.appendLog(this, msg)
-                runOnUiThread {
-                    updateStatusAndLogs()
-                    Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
-                }
-            }
-        }.start()
+        if (recordId > 0L) {
+            PushingWorker.enqueueForPayment(this, recordId, sampleCode)
+            reloadDashboard()
+            Toast.makeText(this, "Đã tạo giao dịch thử #$sampleCode và gửi lên server...", Toast.LENGTH_SHORT).show()
+        }
     }
 
-    fun refreshLogs(view: View?) {
-        updateStatusAndLogs()
-    }
-
-    fun clearLogs(view: View?) {
-        AutoPayPrefs.clearLogs(this)
-        updateStatusAndLogs()
-    }
-
-    private fun handleNotificationListenerPermissionResult(granted: Boolean) {
-        updateStatusAndLogs()
-        val msg = if (granted) Constants.PERMISSION_GRANTED else Constants.PERMISSION_DENIED
-        Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
-    }
-
-    fun settingPermission(view: View?) {
-        notificationListenerUtil.requestNotificationListenerPermission(notiLisPerLauncher)
-    }
-
-    fun checkAutoStartPermission(view: View) {
-        AutoStartHelper.instance.getAutoStartPermission(applicationContext)
-    }
-
-    fun notifyOnLockScreenPermission(v: View) {
+    private fun requestAndroid13NotificationPermission() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             val pers = arrayOf(
                 Manifest.permission.POST_NOTIFICATIONS,
@@ -190,12 +236,12 @@ class SettingActivity : AppCompatActivity() {
             )
             ActivityCompat.requestPermissions(this, pers, requestCodeNotificationPolicyAccess)
         } else {
-            Toast.makeText(this, "Notifications are enabled by default on Android < 13", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Thông báo đã bật mặc định trên Android < 13", Toast.LENGTH_SHORT).show()
         }
     }
 
     @SuppressLint("BatteryLife")
-    fun permissionBattery(view: View) {
+    private fun requestBatteryOptimizationExemption() {
         val powerManager = applicationContext.getSystemService(Context.POWER_SERVICE) as PowerManager
         if (!powerManager.isIgnoringBatteryOptimizations(packageName)) {
             startActivity(
@@ -205,7 +251,7 @@ class SettingActivity : AppCompatActivity() {
                 )
             )
         } else {
-            Toast.makeText(this, "Battery optimization already exempted", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Đã tắt tối ưu pin cho Auto Payment", Toast.LENGTH_SHORT).show()
         }
     }
 }

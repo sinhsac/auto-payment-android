@@ -4,25 +4,20 @@ import android.content.Intent
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import android.util.Log
-import androidx.work.BackoffPolicy
-import androidx.work.Constraints
-import androidx.work.Data
-import androidx.work.ExistingWorkPolicy
-import androidx.work.NetworkType
-import androidx.work.OneTimeWorkRequestBuilder
-import androidx.work.WorkManager
-import com.google.gson.Gson
 import com.hotroso.autopay.common.Constants
-import com.hotroso.autopay.models.XInfo
+import com.hotroso.autopay.data.PaymentDatabaseHelper
+import com.hotroso.autopay.data.PaymentRecord
+import com.hotroso.autopay.data.SyncStatus
 import com.hotroso.autopay.utils.AutoPayPrefs
 import com.hotroso.autopay.utils.NotificationUtils
 import com.hotroso.autopay.utils.PaymentNotificationParser
 import com.hotroso.autopay.workers.PushingWorker
-import java.util.concurrent.TimeUnit
+import com.hotroso.autopay.workers.SyncPendingWorker
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class NotifyListenerService : NotificationListenerService() {
-
-    private val gson = Gson()
 
     override fun onNotificationPosted(sbn: StatusBarNotification) {
         super.onNotificationPosted(sbn)
@@ -46,43 +41,45 @@ class NotifyListenerService : NotificationListenerService() {
         val onlyKnownBanks = AutoPayPrefs.isOnlyKnownBankApps(this)
         val parsed = PaymentNotificationParser.parse(pkg, title, message, prefix, onlyKnownBanks)
 
-        if (!parsed.shouldForward || parsed.orderCode == null) {
+        if (!parsed.shouldForward || parsed.orderCode == null || parsed.amount == null) {
             Log.d(TAG, "Ignored notification from $pkg: ${parsed.reason}")
             return
         }
 
-        Log.i(TAG, "Matched payment notification: order=${parsed.orderCode}, amount=${parsed.amount}, bank=${parsed.bankName}")
-        AutoPayPrefs.appendLog(this, "Matched ${parsed.orderCode} (+${parsed.amount} VND) from ${parsed.bankName}")
+        val strPostTime = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.ENGLISH).format(Date(sbn.postTime))
+        val groupKey = sbn.groupKey ?: ""
+        val fingerprint = PaymentDatabaseHelper.buildFingerprint(pkg, strPostTime, groupKey, message)
 
-        val info = XInfo(sbn, extractedOrderCode = parsed.orderCode, extractedAmount = parsed.amount)
-        enqueuePaymentWebhook(info, sbn.postTime)
-    }
+        // Persist locally to SQLite FIRST so no payment is ever lost if the server is offline
+        val db = PaymentDatabaseHelper.getInstance(this)
+        val record = PaymentRecord(
+            fingerprint = fingerprint,
+            orderCode = parsed.orderCode,
+            amount = parsed.amount,
+            bankName = parsed.bankName,
+            packageName = pkg,
+            title = title,
+            rawMessage = message,
+            groupKey = groupKey,
+            postTimeMs = sbn.postTime,
+            strPostTime = strPostTime,
+            syncStatus = SyncStatus.PENDING
+        )
 
-    private fun enqueuePaymentWebhook(info: XInfo, postTime: Long) {
-        val data = Data.Builder()
-            .putString(PushingWorker.KEY_PAYLOAD_JSON, gson.toJson(info))
-            .build()
+        val rowId = db.insertIfNew(record)
+        if (rowId <= 0L) {
+            Log.d(TAG, "Duplicate payment notification ignored: ${parsed.orderCode}")
+            return
+        }
 
-        val constraints = Constraints.Builder()
-            .setRequiredNetworkType(NetworkType.CONNECTED)
-            .build()
-
-        val workRequest = OneTimeWorkRequestBuilder<PushingWorker>()
-            .setInputData(data)
-            .setConstraints(constraints)
-            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 10, TimeUnit.SECONDS)
-            .addTag("auto-payment-webhook")
-            .build()
-
-        // Unique work name per matched payment so concurrent notifications never overwrite each other
-        val uniqueName = "autopay_${info.orderCode ?: "unknown"}_$postTime"
-        WorkManager.getInstance(this)
-            .enqueueUniqueWork(uniqueName, ExistingWorkPolicy.KEEP, workRequest)
+        Log.i(TAG, "Saved payment #$rowId (${parsed.orderCode}, +${parsed.amount} VND) -> queueing webhook sync")
+        PushingWorker.enqueueForPayment(this, rowId, parsed.orderCode)
     }
 
     override fun onCreate() {
         super.onCreate()
-        Log.d(TAG, "NotifyListenerService created")
+        SyncPendingWorker.schedulePeriodicSync(this)
+        Log.d(TAG, "NotifyListenerService created & periodic SQLite sync scheduled")
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
